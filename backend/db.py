@@ -2,6 +2,7 @@
 from __future__ import annotations
 import sqlite3
 import threading
+from pathlib import Path
 
 PLATFORM_SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -82,6 +83,9 @@ def init_db(path: str) -> sqlite3.Connection:
         except Exception:
             pass
         _conn = None
+    parent = Path(path).parent
+    if str(parent) != ".":
+        parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, check_same_thread=False, timeout=10.0)
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA busy_timeout=10000;")

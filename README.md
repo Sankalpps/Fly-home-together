@@ -68,9 +68,9 @@ This repository includes a [`render.yaml`](./render.yaml) Blueprint configuratio
 4. Set `AERODATABOX_API_KEY` to your RapidAPI key to enable live flight data.
 5. Deploy. Render uses the injected `PORT` and checks `/health` automatically.
 
-The default SQLite database uses Render's ephemeral filesystem. Use a Render
-persistent disk and set `DB_PATH` to its mounted path if data must survive
-redeploys.
+The Render Blueprint uses `/tmp/fht.db`, which is writable but ephemeral. Use
+a Render persistent disk and set `DB_PATH` to its mounted path (for example
+`/var/data/fht.db`) if data must survive redeploys.
 
 ## Extending / Real Data
 To use real flight data, obtain an API key from **AeroDataBox** and set the environment variable:

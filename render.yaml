@@ -11,4 +11,4 @@ services:
       - key: AERODATABOX_API_KEY
         sync: false
       - key: DB_PATH
-        value: fht.db
+        value: /tmp/fht.db

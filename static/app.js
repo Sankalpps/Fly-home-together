@@ -17,7 +17,7 @@ let isRegisterMode = false;
 async function api(path, opts = {}) {
   const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
   const token = localStorage.getItem("fht_token");
-  if (token) headers["Authorization"] = `Bearer ${token}`
+  if (token) headers["Authorization"] = "Bearer " + token;
 
   const res = await fetch(path, {
     method: opts.method || "GET",
@@ -231,6 +231,24 @@ async function openAdminModal() {
 // ---------------------------------------------------------------------------
 // Hidden Admin Console Operations
 // ---------------------------------------------------------------------------
+function updateAdminQuoteReview(cohorts = []) {
+  const cohortId = $("#admin-cohort-select").value;
+  const cohort = cohorts.find(item => item.id === cohortId);
+  const button = $("#btn-admin-rfq");
+  const status = $("#admin-quote-review-status");
+  const eligible = cohort && cohort.status === "OPEN" && cohort.committed >= cohort.threshold;
+  button.disabled = !eligible;
+  status.textContent = !cohort
+    ? "Select a pool to review its quote eligibility."
+    : eligible
+      ? `${cohort.committed} passengers have joined. No quote will be sent until you request one.`
+      : cohort.status === "QUOTING"
+        ? "Sent to the airline desk. Review and approve a submitted quote in the Desk Portal."
+      : cohort.status !== "OPEN"
+        ? `This pool is ${cohort.status.toLowerCase()} and cannot be quoted from this control.`
+        : `${cohort.committed} of ${cohort.threshold} passengers have joined. The pool is not ready for a quote yet.`;
+}
+
 async function loadAdminDashboard() {
   try {
     const stats = await api("/admin/stats");
@@ -245,7 +263,9 @@ async function loadAdminDashboard() {
     $("#admin-cohort-select").innerHTML = cohorts.map(c =>
       `<option value="${esc(c.id)}">${esc(c.origin)}-${esc(c.dest)} on ${esc(c.travel_date)} [${esc(c.status)} - ${c.committed}/${c.threshold}]</option>`
     ).join("");
+    updateAdminQuoteReview(cohorts);
     $("#admin-cohort-select").onchange = async () => {
+      updateAdminQuoteReview(cohorts);
       await loadAdminCohortMembers();
       await loadAdminCohortEditor();
     };
@@ -351,8 +371,10 @@ $("#btn-admin-rfq").onclick = async () => {
   const cid = $("#admin-cohort-select").value;
   if (!cid) return;
   try {
-    await api(`/admin/cohorts/${cid}/rfq`, { method: "POST" });
-    toast("RFQ forced successfully");
+    const cohort = await api(`/admin/cohorts/${cid}/rfq`, { method: "POST" });
+    toast(cohort.status === "QUOTING"
+      ? "RFQ sent to the airline desk; members will see an approved quote later."
+      : "The pool was not sent for quotation.");
     await loadAdminDashboard();
   } catch (e) { toast(e.message); }
 };
@@ -494,7 +516,7 @@ async function loadDeskData() {
     const cohortSel = $("#desk-cohort-select");
 
     if (!rfqs.length) {
-      rfqsList.innerHTML = `<div class="fine">No open RFQs waiting for quotation right now. When a pool reaches threshold, it appears here.</div>`;
+      rfqsList.innerHTML = `<div class="fine">No pools have been sent to the airline desk for quotes.</div>`;
       cohortSel.innerHTML = `<option value="">No open RFQs available</option>`;
     } else {
       rfqsList.innerHTML = rfqs.map(c => `
@@ -531,6 +553,8 @@ async function loadDeskData() {
 
     // Submissions
     const subs = await api("/desk/my-submissions");
+    $("#desk-submissions-title").textContent = currentUser.role === "PLATFORM_ADMIN"
+      ? "Airline Quote Submissions" : "My Submitted Quotes";
     $("#desk-submissions-list").innerHTML = subs.length ? subs.map(s => `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:.5rem 0;border-bottom:1px solid var(--line);font-size:.88rem">
         <div>Cohort <code>${esc(s.cohort_id)}</code> &middot; <b>${inr(s.per_seat)}</b>/seat (${s.seats_avail} seats)</div>
@@ -712,14 +736,14 @@ function poolCard(c) {
 }
 
 async function loadPools() {
-  const cohorts = await api("/api/cohorts");
+  const cohorts = (await api("/api/cohorts")).filter(c => ["QUOTED", "TICKETED"].includes(c.status));
   const routes = [...new Set(cohorts.map(c => `${c.origin}-${c.dest}`))].sort();
   const sel = $("#filter-route"), cur = sel.value;
   sel.innerHTML = `<option value="">All routes</option>` + routes.map(r => `<option>${esc(r)}</option>`).join("");
   sel.value = routes.includes(cur) ? cur : "";
   const shown = cohorts.filter(c => !sel.value || `${c.origin}-${c.dest}` === sel.value);
   $("#pool-list").innerHTML = shown.length ? shown.map(poolCard).join("") :
-    `<div class="card">No pools yet. Be the first to start one.</div>`;
+    `<div class="card">No issued group quotes yet. Start a pool above for your route and date.</div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -768,7 +792,8 @@ async function loadTrip() {
     action = `<p>Status: <b>${esc(m.status)}</b>. Your hold has been released.</p>`;
   }
 
-  const quoteNotificationPanel = c.quote && ["QUOTED", "TICKETED"].includes(c.status)
+  const quoteNotificationPanel = c.quote && ["QUOTED", "TICKETED"].includes(c.status) &&
+    ["JOINED", "ACCEPTED", "TICKETED"].includes(m.status)
     ? (currentUser ? `
       <form id="quote-notification-preferences" class="notification-prefs">
         <h3>Quote and booking alerts</h3>
@@ -842,8 +867,12 @@ async function loadTrip() {
         });
         const simulated = (saved.email_enabled && !saved.gmail_configured) ||
           (saved.telegram_enabled && !saved.telegram_bot_configured);
+        const selectedChannels = [
+          saved.email_enabled ? "email" : "",
+          saved.telegram_enabled ? "Telegram" : "",
+        ].filter(Boolean).join(" and ");
         status.textContent = alert.sent
-          ? `Settings saved. Quote sent to your selected channel${simulated ? " (simulated until the app owner configures delivery)" : "s"}.`
+          ? `Settings saved. Quote sent by ${selectedChannels}${simulated ? " (simulated until the app owner configures delivery)" : "."}`
           : alert.message;
         toast(alert.sent ? "Quote sent to selected channels" : "Alert settings saved");
       } catch (err) {
@@ -862,6 +891,9 @@ async function loadMyPools() {
       pools = data.pools;
     } else {
       const memberIds = JSON.parse(localStorage.getItem("fht_members") || "[]");
+      const selectedMemberId = localStorage.getItem("fht_member");
+      if (selectedMemberId && !memberIds.includes(selectedMemberId)) memberIds.push(selectedMemberId);
+      localStorage.setItem("fht_members", JSON.stringify(memberIds));
       const members = await Promise.all(memberIds.map(memberId =>
         api(`/api/members/${encodeURIComponent(memberId)}`).catch(() => null)
       ));
@@ -978,7 +1010,12 @@ async function loadImpact() {
     [inr(s.platform_revenue), "Platform Fees Earned"],
   ].map(([n, l]) => `<div class="stat"><div class="n">${esc(n)}</div><div class="l">${l}</div></div>`).join("");
 
-  const cohorts = await api("/api/cohorts");
+  const demoControls = $("#demo-controls");
+  const isAdmin = currentUser?.role === "PLATFORM_ADMIN";
+  demoControls.classList.toggle("hidden", !isAdmin);
+  if (!isAdmin) return;
+
+  const cohorts = await api("/admin/cohorts");
   const sel = $("#demo-cohort"), cur = sel.value;
   sel.innerHTML = cohorts.map(c =>
     `<option value="${esc(c.id)}">${esc(c.origin)}-${esc(c.dest)} ${esc(c.travel_date)} (${esc(c.status)}, ${c.committed}/${c.threshold})</option>`).join("");

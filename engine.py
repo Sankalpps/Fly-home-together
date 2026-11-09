@@ -34,8 +34,8 @@ from typing import Optional
 # Configuration
 # ---------------------------------------------------------------------------
 
-DEFAULT_THRESHOLD = 40          # passengers needed to trigger an RFQ
-DEFAULT_CAPACITY = 45           # hard cap per cohort (threshold + buffer for attrition)
+DEFAULT_THRESHOLD = 31          # passengers needed to trigger an RFQ
+DEFAULT_CAPACITY = 45           # hard cap per cohort, including attrition buffer
 QUOTE_VALIDITY_HOURS = 24       # how long members have to accept a quote
 SERVICE_FEE = 199               # flat per-passenger platform fee (INR)
 HOLD_PERCENT = 0.20             # share of the price-cap held up front
@@ -244,6 +244,10 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_members_cohort ON members(cohort_id);
 CREATE INDEX IF NOT EXISTS idx_cohorts_route ON cohorts(origin, dest, travel_date, status);
+CREATE TABLE IF NOT EXISTS engine_migrations (
+    name       TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+);
 """
 
 ACTIVE_MEMBER = ("JOINED", "ACCEPTED")
@@ -275,6 +279,68 @@ class CohortEngine:
         self.capacity = capacity
         # Test/demo hook: allows time to be advanced without sleeping.
         self._clock_offset = timedelta(0)
+        self._migrate_group_quote_threshold()
+        self._migrate_admin_quote_review()
+
+    def _migrate_group_quote_threshold(self) -> None:
+        """Lower active legacy pools to the 31-passenger quote trigger once.
+
+        Pools stay open at the new threshold until an administrator chooses to
+        request a quote.
+        """
+        migration = "group_quote_threshold_31"
+        applied = self.db.execute(
+            "SELECT 1 FROM engine_migrations WHERE name=?", (migration,)
+        ).fetchone()
+        if applied:
+            return
+
+        self.db.execute(
+            "UPDATE cohorts SET threshold=MIN(?, capacity) "
+            "WHERE status IN ('OPEN', 'QUOTING') AND threshold>?",
+            (DEFAULT_THRESHOLD, DEFAULT_THRESHOLD),
+        )
+        self.db.execute(
+            "INSERT INTO engine_migrations(name, applied_at) VALUES (?, ?)",
+            (migration, _iso(_now())),
+        )
+        self.db.commit()
+
+    def _migrate_admin_quote_review(self) -> None:
+        """Return threshold-triggered legacy RFQs to admin review once."""
+        migration = "admin_controls_quote_review_v1"
+        applied = self.db.execute(
+            "SELECT 1 FROM engine_migrations WHERE name=?", (migration,)
+        ).fetchone()
+        if applied:
+            return
+
+        has_submissions = self.db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='rfq_submissions'"
+        ).fetchone()
+        pending_cohorts = set()
+        if has_submissions:
+            pending_cohorts = {
+                row["cohort_id"] for row in self.db.execute(
+                    "SELECT DISTINCT cohort_id FROM rfq_submissions WHERE status='PENDING'"
+                ).fetchall()
+            }
+
+        waiting = self.db.execute(
+            "SELECT id FROM cohorts WHERE status='QUOTING' AND quote_json IS NULL"
+        ).fetchall()
+        for cohort in waiting:
+            if cohort["id"] in pending_cohorts:
+                continue
+            self.db.execute(
+                "UPDATE cohorts SET status='OPEN' WHERE id=?", (cohort["id"],)
+            )
+            self._log(cohort["id"], "Returned to open status for administrator quote review")
+        self.db.execute(
+            "INSERT INTO engine_migrations(name, applied_at) VALUES (?, ?)",
+            (migration, _iso(_now())),
+        )
+        self.db.commit()
 
     def close(self) -> None:
         self.db.close()
@@ -452,7 +518,7 @@ class CohortEngine:
 
     def join(self, name: str, email: str, origin: str, dest: str,
              travel_date: str, flex_days: int = 0, price_cap: Optional[int] = None,
-             trigger_rfq: bool = True, idempotent: bool = False) -> dict:
+             trigger_rfq: bool = False, idempotent: bool = False) -> dict:
         """Place a traveler in the best-fit cohort (or create one).
 
         Best-fit: among OPEN cohorts on the same route whose date is within the
@@ -675,8 +741,6 @@ class CohortEngine:
                 (auth_id, hold, nxt["id"]))
             self._log(cohort_id, f"{nxt['name'].split()[0]} moved from waitlist into the pool")
         self.db.commit()
-        if c["status"] == "OPEN":
-            self._maybe_trigger_rfq(cohort_id)
 
     # -- finalisation --------------------------------------------------------
     def _maybe_finalize(self, cohort_id: str) -> None:

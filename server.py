@@ -75,8 +75,11 @@ def make_handler(engine: CohortEngine):
                             "min_date": (today + timedelta(days=1)).isoformat()})
                     if url.path == "/api/cohorts":
                         engine.tick()
-                        return self._send(200, engine.list_cohorts(
-                            q.get("origin"), q.get("dest"), q.get("status")))
+                        cohorts = engine.list_cohorts(
+                            q.get("origin"), q.get("dest"), q.get("status"))
+                        public_cohorts = [c for c in cohorts
+                                          if c["status"] in ("QUOTED", "TICKETED")]
+                        return self._send(200, public_cohorts)
                     if url.path.startswith("/api/cohorts/"):
                         cid = url.path.split("/")[3]
                         engine.tick()

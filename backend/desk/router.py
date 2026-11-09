@@ -25,7 +25,7 @@ def _iso() -> str:
 class QuoteSubmission(BaseModel):
     per_seat: int = Field(ge=500)
     seats_available: int = Field(ge=1, le=45)
-    deposit_pct: int = Field(default=25, ge=0, le=100)
+    deposit_pct: int = Field(default=25, ge=10, le=100)
     notes: Optional[str] = None
 
 
@@ -143,9 +143,14 @@ def pnr_export(cohort_id: str, request: Request,
 
 @router.get("/my-submissions")
 def my_submissions(user: User = Depends(require_desk)):
-    """All quotes this desk user has submitted."""
-    rows = get_db().execute(
-        "SELECT * FROM rfq_submissions WHERE submitted_by=? ORDER BY submitted_at DESC",
-        (user.id,)
-    ).fetchall()
+    """Desk submissions for the current user, or all submissions for admins."""
+    if user.role == "PLATFORM_ADMIN":
+        rows = get_db().execute(
+            "SELECT * FROM rfq_submissions ORDER BY submitted_at DESC"
+        ).fetchall()
+    else:
+        rows = get_db().execute(
+            "SELECT * FROM rfq_submissions WHERE submitted_by=? ORDER BY submitted_at DESC",
+            (user.id,)
+        ).fetchall()
     return [dict(r) for r in rows]

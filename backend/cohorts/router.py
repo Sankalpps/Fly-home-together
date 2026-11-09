@@ -105,7 +105,9 @@ def list_cohorts(request: Request,
                  status: Optional[str] = Query(None)):
     engine = _engine(request)
     engine.tick()
-    return engine.list_cohorts(origin, dest, status)
+    public_cohorts = engine.list_cohorts(origin, dest, status)
+    return [cohort for cohort in public_cohorts
+            if cohort["status"] in ("QUOTED", "TICKETED")]
 
 
 @router.get("/cohorts/{cohort_id}")
@@ -204,6 +206,8 @@ def join(req: JoinRequest, request: Request,
     from engine import EngineError
     if req.tickets < 1 or req.tickets > 10:
         raise HTTPException(status_code=400, detail="Tickets must be between 1 and 10")
+    if user and user.email.strip().lower() != req.email.strip().lower():
+        raise HTTPException(status_code=400, detail="Use the email address on your signed-in account")
 
     engine = _engine(request)
     try:
@@ -233,15 +237,8 @@ def join(req: JoinRequest, request: Request,
             ))
         cohort_id = members[0]["cohort"]["id"]
         user_id = _member_user_id(engine.db, req.email)
-        if user and user.email.strip().lower() == req.email.strip().lower():
+        if user:
             user_id = user.id
-        cohort = engine.cohort_view(cohort_id)
-        if cohort["committed"] >= cohort["threshold"] and cohort["status"] == "OPEN":
-            engine.db.execute(
-                "UPDATE cohorts SET status='QUOTING' WHERE id=?", (cohort_id,)
-            )
-            engine._log(cohort_id, "RFQ requested: pool reached its passenger threshold")
-            engine.db.commit()
         result = dict(engine.member_view(members[0]["id"]))
     except EngineError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -346,8 +343,49 @@ def decline(member_id: str, request: Request):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__)))))
     from engine import EngineError
+    engine = _engine(request)
     try:
-        return _engine(request).decline(member_id)
+        member = engine.db.execute(
+            "SELECT cohort_id FROM members WHERE id=?", (member_id,),
+        ).fetchone()
+        if not member:
+            raise EngineError("Member not found")
+        cohort_id = member["cohort_id"]
+        waitlisted_before = {
+            row["id"] for row in engine.db.execute(
+                "SELECT id FROM members WHERE cohort_id=? AND status='WAITLIST'",
+                (cohort_id,),
+            ).fetchall()
+        }
+        result = engine.decline(member_id)
+        cohort = result["cohort"]
+        if cohort["status"] == "QUOTED" and waitlisted_before:
+            promoted = engine.db.execute(
+                "SELECT id, email FROM members WHERE cohort_id=? AND status='JOINED' "
+                f"AND id IN ({','.join('?' for _ in waitlisted_before)})",
+                (cohort_id, *waitlisted_before),
+            ).fetchall()
+            from backend.notifications.service import dispatch_async
+            payload = {
+                "route": f"{cohort['origin']} to {cohort['dest']}",
+                "date": cohort["travel_date"],
+                "airline": cohort["quote"]["airline"],
+                "per_seat": cohort["quote"]["per_seat"],
+                "quote_expires": cohort["quote_expires"],
+                "message": "A seat opened and your ticket was promoted from the waitlist.",
+            }
+            for row in promoted:
+                dispatch_async(
+                    "QUOTE_READY", row["email"], payload,
+                    cohort_id=cohort_id,
+                    user_id=_member_user_id(engine.db, row["email"]),
+                )
+        elif cohort["status"] == "TICKETED":
+            _notify_members(engine, cohort_id, "TICKET_ISSUED", {
+                "route": f"{cohort['origin']} to {cohort['dest']}",
+                "message": "Your group booking has been ticketed.",
+            })
+        return result
     except EngineError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

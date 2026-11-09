@@ -43,11 +43,14 @@ def _member_user_id(db, email: str) -> Optional[str]:
 def _notify_members(engine, cohort_id: str, notification_type: str, payload: dict) -> None:
     from backend.notifications.service import dispatch_async
     rows = engine.db.execute(
-        "SELECT id, email FROM members WHERE cohort_id=? AND status IN "
+        "SELECT id, email, pnr FROM members WHERE cohort_id=? AND status IN "
         "('JOINED','ACCEPTED','TICKETED')", (cohort_id,)
     ).fetchall()
     for row in rows:
-        dispatch_async(notification_type, row["email"], payload,
+        member_payload = dict(payload)
+        if notification_type == "TICKET_ISSUED":
+            member_payload["pnr"] = row["pnr"] or ""
+        dispatch_async(notification_type, row["email"], member_payload,
                        cohort_id=cohort_id,
                        user_id=_member_user_id(engine.db, row["email"]))
 
@@ -274,12 +277,14 @@ def send_quote_alert(member_id: str, request: Request,
                      user: User = Depends(get_current_user)):
     engine = _engine(request)
     member = engine.db.execute(
-        "SELECT email FROM members WHERE id=?", (member_id,),
+        "SELECT email, status FROM members WHERE id=?", (member_id,),
     ).fetchone()
     if not member:
         raise HTTPException(status_code=404, detail="Ticket not found")
     if _member_user_id(engine.db, member["email"]) != user.id:
         raise HTTPException(status_code=403, detail="This ticket does not belong to your account")
+    if member["status"] not in ("JOINED", "ACCEPTED", "TICKETED"):
+        raise HTTPException(status_code=400, detail="This ticket is not active in the quote")
     try:
         cohort = engine.member_view(member_id)["cohort"]
     except Exception as exc:

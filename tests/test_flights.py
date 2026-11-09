@@ -4,7 +4,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 from backend.gateway.flights import (
-    DOMESTIC_AIRLINES, INDIA_AIRPORTS, SimulatedFlightGateway,
+    DOMESTIC_AIRLINES, INDIA_AIRPORTS, AeroDataBoxGateway,
+    SimulatedFlightGateway,
 )
 
 
@@ -86,3 +87,49 @@ class TestSimulatedGateway:
     def test_routes_returns_domestic_only(self, gateway):
         for iata in gateway.get_routes("DEL"):
             assert iata in INDIA_AIRPORTS
+
+
+class TestAeroDataBoxGateway:
+    def test_departures_use_provider_supported_time_windows(self):
+        class RecordingGateway(AeroDataBoxGateway):
+            def __init__(self):
+                self.paths = []
+
+            def _get(self, path):
+                self.paths.append(path)
+                return {"departures": []}
+
+        gateway = RecordingGateway()
+        assert gateway.get_airport_departures("BLR", "2026-11-09") == []
+        assert len(gateway.paths) == 2
+        assert "/BLR/2026-11-09T00:00/2026-11-09T11:59" in gateway.paths[0]
+        assert "/BLR/2026-11-09T12:00/2026-11-09T23:59" in gateway.paths[1]
+
+    def test_departures_maps_aerodatabox_arrival_and_departure_objects(self):
+        class RecordingGateway(AeroDataBoxGateway):
+            def __init__(self):
+                self.paths = []
+
+            def _get(self, path):
+                self.paths.append(path)
+                if "T00:00" in path:
+                    return {"departures": [{
+                        "number": "6E 123",
+                        "airline": {"name": "IndiGo"},
+                        "arrival": {"airport": {"iata": "DEL"}},
+                        "departure": {
+                            "scheduledTime": {"local": "2026-11-09 08:00+05:30"},
+                            "revisedTime": {"local": "2026-11-09 08:15+05:30"},
+                            "terminal": "2",
+                            "gate": "D4",
+                            "delay": 15,
+                        },
+                        "status": "Delayed",
+                    }]}
+                return {"departures": []}
+
+        flights = RecordingGateway().get_airport_departures("BLR", "2026-11-09")
+        assert len(flights) == 1
+        assert flights[0]["destination"] == "DEL"
+        assert flights[0]["scheduled_departure"] == "2026-11-09 08:00+05:30"
+        assert flights[0]["delay_minutes"] == 15

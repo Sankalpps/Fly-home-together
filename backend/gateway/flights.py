@@ -206,34 +206,36 @@ class AeroDataBoxGateway(FlightDataGateway):
             return {}
 
     def get_airport_departures(self, iata: str, date_str: str) -> list[dict]:
-        path = (
-            f"/flights/airports/iata/{iata}/{date_str}T00:00/{date_str}T23:59"
-            "?withLeg=true&direction=Departure&withCancelled=true"
-            "&withCodeshared=false&withCargo=false&withPrivate=false"
-        )
-        data = self._get(path)
-        departures = data.get("departures", []) if isinstance(data, dict) else []
         result = []
-        for f in departures:
-            dest_iata = f.get("movement", {}).get("airport", {}).get("iata", "")
-            if dest_iata not in INDIA_AIRPORTS:
-                continue  # domestic only
-            m = f.get("movement", {})
-            result.append({
-                "flight_number": f.get("number", ""),
-                "airline": f.get("airline", {}).get("name", ""),
-                "origin": iata,
-                "destination": dest_iata,
-                "destination_name": INDIA_AIRPORTS.get(dest_iata, dest_iata),
-                "scheduled_departure": m.get("scheduledTime", {}).get("utc", ""),
-                "estimated_departure": m.get("revisedTime", {}).get(
-                    "utc", m.get("scheduledTime", {}).get("utc", "")),
-                "terminal": m.get("terminal", ""),
-                "gate": m.get("gate", ""),
-                "status": f.get("status", ""),
-                "delay_minutes": m.get("delay", 0) or 0,
-                "source": "aerodatabox",
-            })
+        for start_time, end_time in (("T00:00", "T11:59"), ("T12:00", "T23:59")):
+            path = (
+                f"/flights/airports/iata/{iata}/{date_str}{start_time}/{date_str}{end_time}"
+                "?withLeg=true&direction=Departure&withCancelled=true"
+                "&withCodeshared=false&withCargo=false&withPrivate=false"
+            )
+            data = self._get(path)
+            departures = data.get("departures", []) if isinstance(data, dict) else []
+            for f in departures:
+                arrival = f.get("arrival", {})
+                departure = f.get("departure", {})
+                dest_iata = arrival.get("airport", {}).get("iata", "")
+                if dest_iata not in INDIA_AIRPORTS:
+                    continue  # domestic only
+                result.append({
+                    "flight_number": f.get("number", ""),
+                    "airline": f.get("airline", {}).get("name", ""),
+                    "origin": iata,
+                    "destination": dest_iata,
+                    "destination_name": INDIA_AIRPORTS.get(dest_iata, dest_iata),
+                    "scheduled_departure": departure.get("scheduledTime", {}).get("local", ""),
+                    "estimated_departure": departure.get("revisedTime", {}).get(
+                        "local", departure.get("scheduledTime", {}).get("local", "")),
+                    "terminal": departure.get("terminal", ""),
+                    "gate": departure.get("gate", ""),
+                    "status": f.get("status", ""),
+                    "delay_minutes": departure.get("delay", 0) or 0,
+                    "source": "aerodatabox",
+                })
         return result
 
     def get_flight_status(self, flight_number: str, date_str: str) -> Optional[dict]:

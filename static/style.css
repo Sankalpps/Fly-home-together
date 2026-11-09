@@ -94,7 +94,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .progress > i { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width .4s; }
 .progress.full > i { background: var(--good); }
 .count { display: flex; justify-content: space-between; font-size: .85rem; }
-.price { display: flex; gap: .75rem; align-items: baseline; font-size: .9rem; }
+.price { display: flex; gap: .75rem; align-items: center; font-size: .9rem; }
 .price s { color: var(--muted); }
 .price strong { font-size: 1.15rem; }
 .save { color: var(--good); font-weight: 600; }

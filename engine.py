@@ -602,7 +602,7 @@ class CohortEngine:
             "UPDATE cohorts SET status='QUOTED', quote_json=?, quote_expires=? WHERE id=?",
             (json.dumps(best), _iso(expires), cohort_id))
         self._log(cohort_id,
-                  f"Best quote: {best['airline']} Rs {best['per_seat']}/seat
+                  f"Best quote: {best['airline']} Rs {best['per_seat']}/seat "
                   f"(market Rs {market}). Members have {QUOTE_VALIDITY_HOURS}h to accept")
         self.db.commit()
         return self.cohort_view(cohort_id)

@@ -58,6 +58,20 @@ pytest -q
 ```
 All 82 tests should pass.
 
+## Deploying on Render
+
+This repository includes a [`render.yaml`](./render.yaml) Blueprint configuration.
+
+1. Push the repository to GitHub.
+2. In Render, choose **New → Blueprint** and select this repository.
+3. Set `SECRET_KEY` to a long random value in the Render environment settings.
+4. Set `AERODATABOX_API_KEY` to your RapidAPI key to enable live flight data.
+5. Deploy. Render uses the injected `PORT` and checks `/health` automatically.
+
+The default SQLite database uses Render's ephemeral filesystem. Use a Render
+persistent disk and set `DB_PATH` to its mounted path if data must survive
+redeploys.
+
 ## Extending / Real Data
 To use real flight data, obtain an API key from **AeroDataBox** and set the environment variable:
 ```powershell

@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fly Home Together — Domestic India Group Flights</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo">&#9992;</span> Fly Home Together</div>
+  <nav id="main-nav">
+    <button class="tab active" data-view="pools">Pools</button>
+    <button class="tab" data-view="trip">My trip</button>
+    <button class="tab" data-view="flights">Live Flights 🇮🇳</button>
+    <button class="tab hidden" id="tab-desk" data-view="desk">Desk Portal</button>
+    <button class="tab" data-view="impact">Impact</button>
+  </nav>
+
+  <div class="header-actions">
+    <button id="btn-open-login" class="primary sm">Log In / Sign Up</button>
+    <div id="user-pill" class="user-pill hidden">
+      <span id="user-display-name">User</span>
+      <span id="user-role-badge" class="role-badge role-TRAVELER">TRAVELER</span>
+    </div>
+    <button id="btn-notifs" class="icon-btn" title="Notifications">🔔<span id="notif-count" class="badge-count hidden">0</span></button>
+    <button id="btn-admin-secret" class="icon-btn hidden" title="Admin Console (Ctrl+Shift+A)">⚙️</button>
+    <button id="btn-logout" class="sm hidden">Log Out</button>
+  </div>
+</header>
+
+<main>
+  <!-- POOLS VIEW ------------------------------------------------------- -->
+  <section id="view-pools" class="view">
+    <div class="hero">
+      <h1>Festive fares spike. Groups don't have to.</h1>
+      <p>Join a pool for your Indian domestic route and date. When it fills, we request one discounted bulk fare from partner airlines.</p>
+    </div>
+
+    <form id="join-form" class="card form">
+      <h2>Find or start a pool</h2>
+      <div class="grid">
+        <label>From <select id="f-origin"></select></label>
+        <label>To <select id="f-dest"></select></label>
+        <label>Travel date <input type="date" id="f-date" required></label>
+        <label>Date flexibility
+          <select id="f-flex">
+            <option value="0">Exact date</option>
+            <option value="1">&plusmn; 1 day</option>
+            <option value="2">&plusmn; 2 days</option>
+            <option value="3">&plusmn; 3 days</option>
+          </select>
+        </label>
+        <label>Your name <input id="f-name" required maxlength="60" placeholder="Sankalp P S"></label>
+        <label>Email <input id="f-email" type="email" required placeholder="you@example.com"></label>
+        <label>Max price per seat (Rs)<input id="f-cap" type="number" min="500" step="100" placeholder="auto: market fare"></label>
+        <label>Number of tickets<input id="f-tickets" type="number" min="1" max="10" value="1" required></label>
+      </div>
+      <div id="estimate" class="estimate"></div>
+      <div class="row">
+        <button type="submit" class="primary">Join pool</button>
+        <span id="join-msg" class="msg"></span>
+      </div>
+      <p class="fine">Add up to 10 tickets in one request. Each ticket is listed separately and gets its own refundable hold and pool seat.</p>
+    </form>
+
+    <div class="row between">
+      <h2>Live pools</h2>
+      <label class="inline">Route
+        <select id="filter-route"><option value="">All routes</option></select>
+      </label>
+    </div>
+    <div id="pool-list" class="pools"></div>
+  </section>
+
+  <!-- MY TRIP VIEW ----------------------------------------------------- -->
+  <section id="view-trip" class="view hidden">
+    <div id="my-pools" class="card">
+      <h2>My pools</h2>
+      <div id="my-pools-list" class="fine">Sign in to see every pool you joined.</div>
+    </div>
+    <div id="trip-empty" class="card">You have not joined a pool in this browser yet. Join one from the Pools tab.</div>
+    <div id="trip" class="hidden"></div>
+    <div id="my-tickets" class="card">
+      <h2>My booked tickets</h2>
+      <div id="my-tickets-list" class="fine">Sign in to see all tickets booked under your account.</div>
+    </div>
+  </section>
+
+  <!-- REALTIME FLIGHTS VIEW (INDIA DOMESTIC) ----------------------------- -->
+  <section id="view-flights" class="view hidden">
+    <div class="hero">
+      <h1>Real-Time Domestic Flights 🇮🇳</h1>
+      <p>Live status, airport departures, and routes for commercial domestic carriers across India (IndiGo, Air India, Akasa Air, SpiceJet, Air India Express, Star Air).</p>
+    </div>
+
+    <div class="card">
+      <h2>Search Domestic Flights</h2>
+      <div class="grid">
+        <label>Hub Airport
+          <select id="flight-airport-select"></select>
+        </label>
+        <label>Date
+          <input type="date" id="flight-date-select">
+        </label>
+        <label>Check Flight Status
+          <div style="display:flex;gap:.5rem">
+            <input type="text" id="flight-num-input" placeholder="e.g. 6E-204, AI-505" style="flex:1">
+            <button id="btn-check-flight" class="primary sm">Check</button>
+          </div>
+        </label>
+      </div>
+      <div id="flight-status-result" class="hidden" style="margin-top:1rem;padding:.85rem;background:var(--bg);border-radius:10px;border:1px solid var(--line);"></div>
+    </div>
+
+    <div class="card">
+      <div class="row between" style="margin:0 0 1rem;">
+        <h2 id="departures-title" style="margin:0">Live Departures Board</h2>
+        <button id="btn-refresh-flights" class="sm">↻ Refresh Board</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="flight-table">
+          <thead>
+            <tr>
+              <th>Flight #</th>
+              <th>Airline</th>
+              <th>Destination</th>
+              <th>Scheduled</th>
+              <th>Estimated</th>
+              <th>Terminal / Gate</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="departures-tbody">
+            <tr><td colspan="7" style="text-align:center;padding:1.5rem;color:var(--muted)">Loading departures...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Domestic Route Network</h3>
+      <p class="fine">Non-stop connections from this airport to domestic destinations across India.</p>
+      <div id="routes-chips" class="route-chips"></div>
+    </div>
+  </section>
+
+  <!-- AIRLINE DESK PORTAL VIEW (FLIGHT DEPT) --------------------------- -->
+  <section id="view-desk" class="view hidden">
+    <div class="hero">
+      <h1>Airline Desk Portal</h1>
+      <p>Flight Department & Group Booking Desk. Review pooling RFQs, submit quotes, and manage passenger manifests.</p>
+    </div>
+
+    <div class="card">
+      <h2>Submit Group Quote for RFQ</h2>
+      <p class="fine">Review cohorts that reached the threshold and submit bulk discounted quotes.</p>
+      <form id="desk-quote-form" class="grid" style="margin-top:1rem;">
+        <label>Cohort / RFQ
+          <select id="desk-cohort-select" required></select>
+        </label>
+        <label>Per Seat Fare (Rs)
+          <input type="number" id="desk-per-seat" required min="500" step="100" placeholder="e.g. 4200">
+        </label>
+        <label>Seats Offered
+          <input type="number" id="desk-seats" required min="10" placeholder="e.g. 45">
+        </label>
+        <label>Deposit Required (%)
+          <input type="number" id="desk-deposit" value="25" min="10" max="100">
+        </label>
+        <label style="grid-column: 1 / -1">Notes / Terms
+          <input type="text" id="desk-notes" placeholder="e.g. Hand baggage included, complimentary meal.">
+        </label>
+        <div style="grid-column: 1 / -1">
+          <button type="submit" class="primary">Submit Quote to Pool</button>
+          <span id="desk-quote-msg" class="msg" style="margin-left:1rem"></span>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="row between" style="margin:0 0 1rem;">
+        <h2 style="margin:0">Open RFQs Waiting for Quotes</h2>
+        <button id="btn-refresh-rfqs" class="sm">↻ Refresh</button>
+      </div>
+      <div id="desk-rfqs-list"></div>
+    </div>
+
+    <div class="card">
+      <h2>Passenger & Waitlist Review</h2>
+      <p class="fine">Check passenger details, booking status, and the ordered waitlist for any pool.</p>
+      <div class="row" style="margin-top:.75rem">
+        <select id="desk-passenger-cohort" style="flex:1"></select>
+        <button id="btn-load-passengers" class="sm">Review Passengers</button>
+      </div>
+      <div id="desk-passenger-review" style="margin-top:1rem"></div>
+    </div>
+
+    <div class="card">
+      <h2>Passenger Manifest & PNR Export</h2>
+      <p class="fine">Download official passenger lists for ticketed cohorts in CSV format.</p>
+      <div id="desk-manifest-list" style="margin-top:.75rem"></div>
+    </div>
+
+    <div class="card">
+      <h2>My Submitted Quotes</h2>
+      <div id="desk-submissions-list" style="margin-top:.75rem"></div>
+    </div>
+  </section>
+
+  <!-- PLATFORM IMPACT VIEW --------------------------------------------- -->
+  <section id="view-impact" class="view hidden">
+    <h2>Platform impact</h2>
+    <div id="impact" class="stats"></div>
+    <div class="card">
+      <h3>Demo controls</h3>
+      <p class="fine">Accelerate flows for demonstration purposes.</p>
+      <div class="row">
+        <select id="demo-cohort"></select>
+        <button id="demo-fill">Fill to threshold</button>
+        <button id="demo-accept">Everyone accepts</button>
+        <button id="demo-advance">Advance 25 hours</button>
+      </div>
+      <span id="demo-msg" class="msg"></span>
+    </div>
+  </section>
+</main>
+
+<!-- LOGIN / REGISTER MODAL (SINGLE UNIFIED LOGIN) --------------------- -->
+<div id="modal-login" class="modal-backdrop hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div>
+        <h2 style="margin:0" id="login-modal-title">Sign In</h2>
+        <p class="fine" style="margin:0">One login for all roles. Your department and access are auto-identified.</p>
+      </div>
+      <button class="modal-close" id="btn-close-login">&times;</button>
+    </div>
+
+    <div class="quick-logins">
+      <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.2rem;">Quick Test Logins (1-Click)</div>
+      <button class="quick-btn" data-email="user1@gmail.com" data-pw="password123">
+        <span>👤 <b>User / Traveler</b></span>
+        <small>user1@gmail.com</small>
+      </button>
+      <button class="quick-btn" data-email="ragu@atc.gov" data-pw="password123">
+        <span>✈ <b>Flight Dept Staff</b></span>
+        <small>ragu@atc.gov</small>
+      </button>
+      <button class="quick-btn" data-email="guru@atc.gov" data-pw="password123">
+        <span>🛡 <b>Platform Admin</b></span>
+        <small>guru@atc.gov</small>
+      </button>
+    </div>
+
+    <form id="auth-form">
+      <div id="register-fields" class="hidden">
+        <label style="margin-bottom:.75rem">Full Name
+          <input type="text" id="auth-name" placeholder="Ragu Sharma">
+        </label>
+        <label style="margin-bottom:.75rem">Phone (optional)
+          <input type="text" id="auth-phone" placeholder="+91 98765 43210">
+        </label>
+      </div>
+      <label style="margin-bottom:.75rem">Email
+        <input type="email" id="auth-email" required placeholder="name@domain.com">
+      </label>
+      <label style="margin-bottom:.75rem">Password
+        <input type="password" id="auth-password" required minlength="6" placeholder="At least 6 characters">
+      </label>
+      <div class="row" style="margin-top:1rem;justify-content:space-between">
+        <button type="submit" id="auth-submit-btn" class="primary">Sign In</button>
+        <button type="button" id="btn-toggle-auth-mode" class="sm">Need an account? Register</button>
+      </div>
+      <span id="auth-msg" class="msg" style="display:block;margin-top:.75rem"></span>
+    </form>
+  </div>
+</div>
+
+<!-- HIDDEN ADMIN CONSOLE OVERLAY (Ctrl+Shift+A) ------------------------- -->
+<div id="modal-admin" class="modal-backdrop hidden">
+  <div class="modal-card wide">
+    <div class="modal-head">
+      <div>
+        <h2 style="margin:0">🛡 Platform Admin Console</h2>
+        <p class="fine" style="margin:0">Restricted internal controls. Not visible in navigation.</p>
+      </div>
+      <button class="modal-close" id="btn-close-admin">&times;</button>
+    </div>
+
+    <div id="admin-stats-box" class="stats" style="margin-bottom:1rem"></div>
+
+    <div class="card" style="margin-bottom:1rem">
+      <h3>User Directory & Role Promotion</h3>
+      <p class="fine">Assign departments and roles (Traveler, Desk Staff, Platform Admin).</p>
+      <div style="overflow-x:auto;max-height:220px;overflow-y:auto">
+        <table class="flight-table" style="font-size:.82rem">
+          <thead>
+            <tr><th>Email</th><th>Name</th><th>Role</th><th>Dept</th><th>Action</th></tr>
+          </thead>
+          <tbody id="admin-users-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:1rem">
+      <h3>Cohort Overrides</h3>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+        <select id="admin-cohort-select" style="flex:1;min-width:200px"></select>
+        <button id="btn-admin-rfq" class="primary sm">Force RFQ</button>
+        <button id="btn-admin-cancel" class="danger sm">Force Cancel</button>
+        <button id="btn-admin-reopen" class="sm">Reopen Cancelled Pool</button>
+      </div>
+      <div class="grid" style="margin-top:1rem">
+        <label>From<select id="admin-origin"></select></label>
+        <label>To<select id="admin-dest"></select></label>
+        <label>Travel date<input id="admin-date" type="date"></label>
+        <label>Threshold<input id="admin-threshold" type="number" min="1"></label>
+        <label>Capacity<input id="admin-capacity" type="number" min="1"></label>
+      </div>
+      <button id="btn-admin-save-pool" class="primary sm" style="margin-top:.75rem">Save Pool Changes</button>
+      <span id="admin-pool-msg" class="msg"></span>
+      <div id="admin-cohort-members" style="margin-top:1rem"></div>
+    </div>
+
+    <div class="card">
+      <h3>System Notification Log</h3>
+      <div id="admin-notifs-log" style="max-height:160px;overflow-y:auto;font-size:.82rem"></div>
+    </div>
+  </div>
+</div>
+
+<!-- NOTIFICATIONS MODAL ----------------------------------------------- -->
+<div id="modal-notifs" class="modal-backdrop hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2 style="margin:0">🔔 Notifications</h2>
+      <button class="modal-close" id="btn-close-notifs">&times;</button>
+    </div>
+    <div id="notifs-list">
+      <div style="text-align:center;color:var(--muted);padding:1.5rem">No notifications yet.</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+<script src="/app.js"></script>
+</body>
+</html>

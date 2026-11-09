@@ -34,7 +34,7 @@
   <section id="view-pools" class="view">
     <div class="hero">
       <h1>Festive fares spike. Groups don't have to.</h1>
-      <p>Join a pool for your Indian domestic route and date. At 31 passengers, it becomes eligible for an administrator to request a discounted airline quote. Only administrator-approved quotes appear in the public pool list.</p>
+      <p>Join a pool for your Indian domestic route and date. The admin reviews all pools and manually sends RFQs to airlines for group discount fares.</p>
     </div>
 
     <form id="join-form" class="card form">
@@ -65,7 +65,7 @@
     </form>
 
     <div class="row between">
-      <h2>Available group quotes</h2>
+      <h2>Live pools</h2>
       <label class="inline">Route
         <select id="filter-route"><option value="">All routes</option></select>
       </label>
@@ -154,7 +154,7 @@
 
     <div class="card">
       <h2>Submit Group Quote for RFQ</h2>
-      <p class="fine">Submit bulk quotes for pools the administrator has sent to the airline desk.</p>
+      <p class="fine">Review cohorts that reached the threshold and submit bulk discounted quotes.</p>
       <form id="desk-quote-form" class="grid" style="margin-top:1rem;">
         <label>Cohort / RFQ
           <select id="desk-cohort-select" required></select>
@@ -203,7 +203,7 @@
     </div>
 
     <div class="card">
-      <h2 id="desk-submissions-title">My Submitted Quotes</h2>
+      <h2>My Submitted Quotes</h2>
       <div id="desk-submissions-list" style="margin-top:.75rem"></div>
     </div>
   </section>
@@ -212,7 +212,7 @@
   <section id="view-impact" class="view hidden">
     <h2>Platform impact</h2>
     <div id="impact" class="stats"></div>
-    <div class="card" id="demo-controls">
+    <div class="card">
       <h3>Demo controls</h3>
       <p class="fine">Accelerate flows for demonstration purposes.</p>
       <div class="row">
@@ -305,14 +305,12 @@
 
     <div class="card" style="margin-bottom:1rem">
       <h3>Cohort Overrides</h3>
-      <p class="fine">Pools at their passenger threshold wait here for your review. Send an RFQ to the airline desk when you want a company quote. The pool stays off the public list until you approve a submitted quote in the Desk Portal.</p>
       <div style="display:flex;gap:.75rem;flex-wrap:wrap">
         <select id="admin-cohort-select" style="flex:1;min-width:200px"></select>
-        <button id="btn-admin-rfq" class="primary sm" disabled>Send RFQ to Airline Desk</button>
+        <button id="btn-admin-rfq" class="primary sm">Force RFQ</button>
         <button id="btn-admin-cancel" class="danger sm">Force Cancel</button>
         <button id="btn-admin-reopen" class="sm">Reopen Cancelled Pool</button>
       </div>
-      <div id="admin-quote-review-status" class="fine" style="margin-top:.5rem"></div>
       <div class="grid" style="margin-top:1rem">
         <label>From<select id="admin-origin"></select></label>
         <label>To<select id="admin-dest"></select></label>

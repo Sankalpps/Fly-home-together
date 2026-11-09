@@ -35,10 +35,11 @@ class QuoteSubmission(BaseModel):
 
 @router.get("/rfqs")
 def list_rfqs(request: Request, user: User = Depends(require_desk)):
-    """Open cohorts waiting for a quote (status=QUOTING)."""
+    """All pools (OPEN or QUOTING) — admin manually initiates RFQs."""
     engine = request.app.state.engine
-    # Airline-scoped: show QUOTING cohorts; admins see all
-    return engine.list_cohorts(status="QUOTING")
+    open_pools = engine.list_cohorts(status="OPEN")
+    quoting_pools = engine.list_cohorts(status="QUOTING")
+    return open_pools + quoting_pools
 
 
 @router.post("/rfqs/{cohort_id}/quote", status_code=201)
@@ -47,8 +48,14 @@ def submit_quote(cohort_id: str, body: QuoteSubmission,
     """Submit a manual quote for platform review."""
     db = get_db()
     cohort = request.app.state.engine.cohort_view(cohort_id)
-    if cohort["status"] != "QUOTING":
-        raise HTTPException(status_code=400, detail="This pool is not waiting for a quote")
+    if cohort["status"] not in ("OPEN", "QUOTING"):
+        raise HTTPException(status_code=400, detail="This pool is not available for quoting")
+    # Transition OPEN -> QUOTING when admin/desk submits a quote
+    if cohort["status"] == "OPEN":
+        engine = request.app.state.engine
+        engine.db.execute("UPDATE cohorts SET status='QUOTING' WHERE id=?", (cohort_id,))
+        engine._log(cohort_id, "Admin manually initiated RFQ")
+        engine.db.commit()
     if body.seats_available < cohort["committed"]:
         raise HTTPException(status_code=400, detail="Seats offered must cover all joined tickets")
     sub_id = "rfq_" + uuid.uuid4().hex[:10]
@@ -143,14 +150,9 @@ def pnr_export(cohort_id: str, request: Request,
 
 @router.get("/my-submissions")
 def my_submissions(user: User = Depends(require_desk)):
-    """Desk submissions for the current user, or all submissions for admins."""
-    if user.role == "PLATFORM_ADMIN":
-        rows = get_db().execute(
-            "SELECT * FROM rfq_submissions ORDER BY submitted_at DESC"
-        ).fetchall()
-    else:
-        rows = get_db().execute(
-            "SELECT * FROM rfq_submissions WHERE submitted_by=? ORDER BY submitted_at DESC",
-            (user.id,)
-        ).fetchall()
+    """All quotes this desk user has submitted."""
+    rows = get_db().execute(
+        "SELECT * FROM rfq_submissions WHERE submitted_by=? ORDER BY submitted_at DESC",
+        (user.id,)
+    ).fetchall()
     return [dict(r) for r in rows]

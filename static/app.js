@@ -231,24 +231,6 @@ async function openAdminModal() {
 // ---------------------------------------------------------------------------
 // Hidden Admin Console Operations
 // ---------------------------------------------------------------------------
-function updateAdminQuoteReview(cohorts = []) {
-  const cohortId = $("#admin-cohort-select").value;
-  const cohort = cohorts.find(item => item.id === cohortId);
-  const button = $("#btn-admin-rfq");
-  const status = $("#admin-quote-review-status");
-  const eligible = cohort && cohort.status === "OPEN" && cohort.committed >= cohort.threshold;
-  button.disabled = !eligible;
-  status.textContent = !cohort
-    ? "Select a pool to review its quote eligibility."
-    : eligible
-      ? `${cohort.committed} passengers have joined. No quote will be sent until you request one.`
-      : cohort.status === "QUOTING"
-        ? "Sent to the airline desk. Review and approve a submitted quote in the Desk Portal."
-      : cohort.status !== "OPEN"
-        ? `This pool is ${cohort.status.toLowerCase()} and cannot be quoted from this control.`
-        : `${cohort.committed} of ${cohort.threshold} passengers have joined. The pool is not ready for a quote yet.`;
-}
-
 async function loadAdminDashboard() {
   try {
     const stats = await api("/admin/stats");
@@ -263,9 +245,7 @@ async function loadAdminDashboard() {
     $("#admin-cohort-select").innerHTML = cohorts.map(c =>
       `<option value="${esc(c.id)}">${esc(c.origin)}-${esc(c.dest)} on ${esc(c.travel_date)} [${esc(c.status)} - ${c.committed}/${c.threshold}]</option>`
     ).join("");
-    updateAdminQuoteReview(cohorts);
     $("#admin-cohort-select").onchange = async () => {
-      updateAdminQuoteReview(cohorts);
       await loadAdminCohortMembers();
       await loadAdminCohortEditor();
     };
@@ -371,10 +351,8 @@ $("#btn-admin-rfq").onclick = async () => {
   const cid = $("#admin-cohort-select").value;
   if (!cid) return;
   try {
-    const cohort = await api(`/admin/cohorts/${cid}/rfq`, { method: "POST" });
-    toast(cohort.status === "QUOTING"
-      ? "RFQ sent to the airline desk; members will see an approved quote later."
-      : "The pool was not sent for quotation.");
+    await api(`/admin/cohorts/${cid}/rfq`, { method: "POST" });
+    toast("RFQ sent to airline desk successfully");
     await loadAdminDashboard();
   } catch (e) { toast(e.message); }
 };
@@ -516,7 +494,7 @@ async function loadDeskData() {
     const cohortSel = $("#desk-cohort-select");
 
     if (!rfqs.length) {
-      rfqsList.innerHTML = `<div class="fine">No pools have been sent to the airline desk for quotes.</div>`;
+      rfqsList.innerHTML = `<div class="fine">No pools available. All pools appear here once passengers have joined.</div>`;
       cohortSel.innerHTML = `<option value="">No open RFQs available</option>`;
     } else {
       rfqsList.innerHTML = rfqs.map(c => `
@@ -553,8 +531,6 @@ async function loadDeskData() {
 
     // Submissions
     const subs = await api("/desk/my-submissions");
-    $("#desk-submissions-title").textContent = currentUser.role === "PLATFORM_ADMIN"
-      ? "Airline Quote Submissions" : "My Submitted Quotes";
     $("#desk-submissions-list").innerHTML = subs.length ? subs.map(s => `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:.5rem 0;border-bottom:1px solid var(--line);font-size:.88rem">
         <div>Cohort <code>${esc(s.cohort_id)}</code> &middot; <b>${inr(s.per_seat)}</b>/seat (${s.seats_avail} seats)</div>
@@ -713,37 +689,34 @@ $("#join-form").addEventListener("submit", async ev => {
 // Pools List
 // ---------------------------------------------------------------------------
 function poolCard(c) {
-  const pct = Math.min(100, Math.round(100 * c.committed / c.threshold));
-  const full = c.committed >= c.threshold;
   const fest = c.festival ? `<span class="badge fest">${esc(c.festival)}</span>` : "";
   let price = `<div class="price"><span>Solo fare <s>${inr(c.market_fare)}</s></span></div>`;
   if (c.quote) {
     price = `<div class="price"><s>${inr(c.market_fare)}</s> <strong>${inr(c.quote.per_seat + c.quote.service_fee)}</strong>
       <span class="save">save ${inr(c.quote.saving_per_seat - c.quote.service_fee)} + fee</span></div>`;
   }
-  const left = c.status === "OPEN"
-    ? (c.spots_to_threshold > 0 ? `${c.spots_to_threshold} more to unlock group fare` : "Threshold reached")
-    : c.status === "QUOTED" ? "Quote ready, members deciding"
-    : c.status === "TICKETED" ? "Tickets issued" : "Cancelled";
+  const statusLabel = c.status === "QUOTED" ? "Quote ready, members deciding"
+    : c.status === "TICKETED" ? "Tickets issued"
+    : c.status === "QUOTING" ? "RFQ in progress"
+    : c.status === "CANCELLED" ? "Cancelled" : "Accepting passengers";
   return `<div class="card pool">
     <div class="route">${esc(c.origin_city)} to ${esc(c.dest_city)}
       <span class="badge ${esc(c.status)}">${esc(c.status)}</span>${fest}</div>
     <div class="meta">${esc(c.travel_date)} &middot; ${c.waitlist ? c.waitlist + " on waitlist" : "seats open"}</div>
-    <div class="count"><span><b>${c.committed}</b> / ${c.threshold} joined</span><span>${esc(left)}</span></div>
-    <div class="progress ${full ? "full" : ""}"><i style="width:${pct}%"></i></div>
+    <div class="count"><span><b>${c.committed}</b> passengers joined</span><span>${esc(statusLabel)}</span></div>
     ${price}
   </div>`;
 }
 
 async function loadPools() {
-  const cohorts = (await api("/api/cohorts")).filter(c => ["QUOTED", "TICKETED"].includes(c.status));
+  const cohorts = await api("/api/cohorts");
   const routes = [...new Set(cohorts.map(c => `${c.origin}-${c.dest}`))].sort();
   const sel = $("#filter-route"), cur = sel.value;
   sel.innerHTML = `<option value="">All routes</option>` + routes.map(r => `<option>${esc(r)}</option>`).join("");
   sel.value = routes.includes(cur) ? cur : "";
   const shown = cohorts.filter(c => !sel.value || `${c.origin}-${c.dest}` === sel.value);
   $("#pool-list").innerHTML = shown.length ? shown.map(poolCard).join("") :
-    `<div class="card">No issued group quotes yet. Start a pool above for your route and date.</div>`;
+    `<div class="card">No pools yet. Be the first to start one.</div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -762,8 +735,6 @@ async function loadTrip() {
   catch { localStorage.removeItem("fht_member"); empty.classList.remove("hidden"); box.classList.add("hidden"); return; }
   empty.classList.add("hidden"); box.classList.remove("hidden");
   const c = m.cohort;
-  const pct = Math.min(100, Math.round(100 * c.committed / c.threshold));
-
   // Connect SSE for live updates if not connected to this cohort
   connectSSE(c.id);
 
@@ -822,8 +793,7 @@ async function loadTrip() {
       </div>
       ${m.hold_amount ? `<div class="fine">Refundable hold placed: <b>${inr(m.hold_amount)}</b></div>` : ""}
     </div>
-    <div class="count" style="margin-top:1rem"><span><b>${c.committed}</b> / ${c.threshold} joined</span><span>${esc(c.status)}</span></div>
-    <div class="progress ${c.committed >= c.threshold ? "full" : ""}"><i style="width:${pct}%"></i></div>
+    <div class="count" style="margin-top:1rem"><span><b>${c.committed}</b> passengers joined</span><span>${esc(c.status)}</span></div>
     <div style="margin-top:1rem">${action}${quoteNotificationPanel}</div>
   </div>
   <div class="card"><h3>Pool activity</h3>
@@ -1010,12 +980,7 @@ async function loadImpact() {
     [inr(s.platform_revenue), "Platform Fees Earned"],
   ].map(([n, l]) => `<div class="stat"><div class="n">${esc(n)}</div><div class="l">${l}</div></div>`).join("");
 
-  const demoControls = $("#demo-controls");
-  const isAdmin = currentUser?.role === "PLATFORM_ADMIN";
-  demoControls.classList.toggle("hidden", !isAdmin);
-  if (!isAdmin) return;
-
-  const cohorts = await api("/admin/cohorts");
+  const cohorts = await api("/api/cohorts");
   const sel = $("#demo-cohort"), cur = sel.value;
   sel.innerHTML = cohorts.map(c =>
     `<option value="${esc(c.id)}">${esc(c.origin)}-${esc(c.dest)} ${esc(c.travel_date)} (${esc(c.status)}, ${c.committed}/${c.threshold})</option>`).join("");

@@ -105,9 +105,7 @@ def list_cohorts(request: Request,
                  status: Optional[str] = Query(None)):
     engine = _engine(request)
     engine.tick()
-    public_cohorts = engine.list_cohorts(origin, dest, status)
-    return [cohort for cohort in public_cohorts
-            if cohort["status"] in ("QUOTED", "TICKETED")]
+    return engine.list_cohorts(origin, dest, status)
 
 
 @router.get("/cohorts/{cohort_id}")
@@ -239,6 +237,7 @@ def join(req: JoinRequest, request: Request,
         user_id = _member_user_id(engine.db, req.email)
         if user:
             user_id = user.id
+        # No auto-transition: admin manually initiates RFQs from admin panel
         result = dict(engine.member_view(members[0]["id"]))
     except EngineError as e:
         raise HTTPException(status_code=400, detail=str(e))

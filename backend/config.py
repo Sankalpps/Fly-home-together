@@ -32,7 +32,7 @@ class Settings:
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # Database
-    DB_PATH: str = os.getenv("DB_PATH", "/tmp/fht.db")
+    DB_PATH: str = os.getenv("DB_PATH", "fht.db")
 
     # --- Flight data (AeroDataBox via RapidAPI — free dev tier available) ---
     AERODATABOX_API_KEY: str = os.getenv("AERODATABOX_API_KEY", "")

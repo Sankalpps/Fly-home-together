@@ -101,25 +101,25 @@ def force_cancel(cohort_id: str, request: Request,
 
 
 @router.post("/cohorts/{cohort_id}/rfq")
-def request_rfq(cohort_id: str, request: Request,
-                _: User = Depends(require_admin)):
+def force_rfq(cohort_id: str, request: Request,
+              _: User = Depends(require_admin)):
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))))
     from engine import EngineError
     engine = request.app.state.engine
     try:
-        cohort = engine.cohort_view(cohort_id)
-        if cohort["status"] != "OPEN":
-            raise EngineError(f"Pool is {cohort['status']}; only open pools can be sent for quotes")
-        if cohort["committed"] < cohort["threshold"]:
-            raise EngineError("Pool has not reached its passenger quote threshold")
-        engine.db.execute(
-            "UPDATE cohorts SET status='QUOTING' WHERE id=?", (cohort_id,)
-        )
-        engine._log(
-            cohort_id,
-            f"Administrator sent RFQ to the airline desk for {cohort['committed']} passengers",
-        )
-        engine.db.commit()
-        return engine.cohort_view(cohort_id)
+        cohort = engine.run_rfq(cohort_id)
+        if cohort["status"] == "QUOTED":
+            from backend.cohorts.router import _notify_members
+            _notify_members(engine, cohort_id, "QUOTE_READY", {
+                "route": f"{cohort['origin']} to {cohort['dest']}",
+                "date": cohort["travel_date"],
+                "airline": cohort["quote"]["airline"],
+                "per_seat": cohort["quote"]["per_seat"],
+                "quote_expires": cohort["quote_expires"],
+            })
+        return cohort
     except EngineError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

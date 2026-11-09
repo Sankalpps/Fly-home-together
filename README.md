@@ -8,8 +8,6 @@ This repository implements a full‑stack flight‑booking platform with a **sin
 - Notification system (console‑based simulation).
 - All core features are unit‑tested (82 pytest tests) and a live‑verification script confirms the running server.
 
-Pools become eligible for an administrator to send to the airline desk at **31 passengers**, with capacity up to 45. RFQs are never sent automatically, and only pools with an administrator-approved airline quote appear in the public pool list. Existing open pools are updated to the 31-passenger threshold on startup.
-
 ## Prerequisites
 - **OS:** Windows (tested on Windows 10/11).
 - **Python:** 3.11+ (the virtual environment in the repo already contains the needed packages).
